@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NATO İnteraktif Harita</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <!-- FontAwesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    #bottom-bar {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 1.2rem;
+      background-color: #262626;
+      z-index: 1000;
+    }
+
+    /* Global Pop-up Style */
+    .leaflet-popup-content {
+      font-size: 16px;
+      font-weight: bold;
+      padding: 12px;
+      max-width: 380px;
+      min-width: 230px;
+      color: white;
+      line-height: 1.5;
+      overflow-x: hidden;
+      overflow-y: auto;
+      text-align: center; /* Ortaya hizalama */
+    }
+
+    .leaflet-popup-content-wrapper {
+      border: 3px solid #986165;
+      border-radius: 10px;
+      background-color: #3e3d3d;
+    }
+
+    .leaflet-popup-close-button {
+      font-size: 30px !important;
+      color: #ff0000;
+      font-weight: bold;
+      width: 30px !important;
+      height: 30px !important;
+      line-height: 30px !important;
+    }
+
+    /* Resim için stil */
+    .popup-image {
+      width: 100%;
+      height: auto;
+      max-width: 300px;
+      object-fit: cover;
+      margin-top: 10px;
+    }
+
+    /* Açıklama için stil */
+    .popup-description {
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    /* Mobil Uyumluluk */
+    @media (max-width: 600px) {
+      .popup-description {
+        font-size: 16px;
+      }
+
+      .leaflet-popup-content {
+        font-size: 12px !important;
+        width: 90% !important;
+        max-height: 80vh !important;
+        overflow-y: auto;
+        padding: 10px;
+        margin: auto; /* Ortalamayı sağla */
+      }
+
+      .leaflet-popup-content-wrapper {
+        border-radius: 10px;
+        background-color: #3e3d3d;
+        padding: 12px;
+      }
+
+      .popup-image {
+        max-width: 100%;
+        width: 100%;
+      }
+
+      /* Mobilde kaydırma ikonu için stil */
+      .scroll-indicator {
+        display: none;
+        font-size: 24px;
+        text-align: center;
+        margin-top: 10px;
+        color: #fff;
+        cursor: pointer;
+        animation: bounce 1.5s infinite; /* Bouncing effect */
+      }
+
+      .scroll-indicator.visible {
+        display: block;
+      }
+
+      /* Bouncing animasyon */
+      @keyframes bounce {
+        0%, 100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-10px);
+        }
+      }
+
+      /* Aşağı kaydırma simgesi */
+      .scroll-down-button {
+        display: none;
+        font-size: 24px;
+        color: #ff7e00;
+        text-align: center;
+        cursor: pointer;
+        margin-top: 10px;
+        font-weight: bold;
+      }
+
+      .scroll-down-button.visible {
+        display: block;
+      }
+    }
+
+    @media (min-width: 601px) {
+      .leaflet-popup-content {
+        font-size: 16px !important;
+        width: 380px;
+        max-width: 380px;
+      }
+    }
+
+    /* Button Styles */
+    #showColoniesBtn {
+      position: absolute;
+      bottom: 15px;
+      left: 15px;
+      background-color: #f1c40f;
+      padding: 10px 20px;
+      color: #fff;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 1001;
+    }
+
+    #showColoniesBtn:hover {
+      background-color: #e67e22;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="bottom-bar"></div>
+  
+  <!-- İngiltere Sömürgelerini Göster Butonu -->
+  <button id="showColoniesBtn">İngiltere Sömürgelerini Göster</button>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Turf.js Kütüphanesi -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+
+  <script>
+    var zoomLevel = (window.innerWidth <= 600) ? 4 : 3;
+    var map = L.map('map').setView([41, 28], zoomLevel);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap, © CartoDB',
+      maxZoom: 19
+    }).addTo(map);
+
+    var selectedStyle = { 
+      color: "#dcae0f",
+      weight: 2,
+      fillColor: "#282828",
+      fillOpacity: 0.6
+    };
+
+    var defaultStyle = { 
+      color: "#b47c80",
+      weight: 1,
+      fillColor: "#282828",
+      fillOpacity: 0.6
+    };
+
+    var selectedLayer = null;
+
+    var mapCenter = [15, -10];
+    map.setView(mapCenter, 3);
+
+    fetch('datam.geojson')  
+      .then(response => response.json())
+      .then(data => {
+        var englandFeature = data.features[0]; 
+        var englandLayer = L.geoJSON(englandFeature.geometry, {
+          style: selectedStyle
+        }).bindTooltip("İngiltere", {
+          permanent: true,
+          direction: 'center',
+          className: 'tooltip-style',
+          opacity: 0.7
+        }).bindPopup(`<b>Ülke:</b> İngiltere`);
+
+        englandLayer.on('click', function() {
+          if (selectedLayer) {
+            selectedLayer.setStyle(defaultStyle);
+          }
+          englandLayer.setStyle(selectedStyle);
+          selectedLayer = englandLayer;
+
+          map.setView([15, -10], 3);
+          showColonies(); 
+        });
+
+        englandLayer.addTo(map);
+      })
+      .catch(error => console.error("İngiltere verisi yüklenirken hata oluştu:", error));
+
+    // Sadece İngiltere'nin sömürgelerini gösteren fonksiyon
+    function showColonies() {
+      fetch('data.geojson')  
+        .then(response => response.json())
+        .then(data => {
+          var countryGeometries = {};
+          // Tüm ülkeleri yükle, ancak filtrelemeden yalnızca İngiltere'nin sömürgelerini göster
+          data.features.forEach(feature => {
+            var colonies = feature.properties.SÖMÜRGE;
+            var countryName = feature.properties.ÜLKE;
+            var description = feature.properties.AÇIKLAMA;
+            var imageUrl = feature.properties.RESİM;
+
+            var descriptionHTML = description ? `<b>Açıklama:</b> ${description}<br>` : '';
+            var coloniesHTML = colonies ? `<b>Sömürge:</b> ${colonies}<br>` : '';
+
+            var popupContent = ` 
+              <b>Ülke:</b> ${countryName}<br>
+              ${descriptionHTML}
+              ${coloniesHTML}
+              ${imageUrl ? `<img src="${imageUrl}" class="popup-image" alt="Resim">` : ''}
+            `;
+
+            var countryLayer = L.geoJSON(feature.geometry, {
+              style: colonies === "İNGİLTERE" ? selectedStyle : defaultStyle
+            }).bindTooltip(countryName, {
+              permanent: true,
+              direction: 'center',
+              className: 'tooltip-style',
+              opacity: 0.7
+            }).bindPopup(popupContent);
+
+            countryLayer.on('click', function() {
+              if (selectedLayer) {
+                selectedLayer.setStyle(defaultStyle);
+              }
+              countryLayer.setStyle(selectedStyle);
+              selectedLayer = countryLayer;
+            });
+
+            if (colonies === "İNGİLTERE") {
+              countryLayer.addTo(map); // Sadece İngiltere'nin sömürgelerini haritaya ekleyin
+            }
+          });
+        });
+    }
+
+    // Buton tıklaması için olay dinleyici
+    document.getElementById('showColoniesBtn').addEventListener('click', function() {
+      showColonies();
+    });
+  </script>
+</body>
+</html>
